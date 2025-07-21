@@ -1,6 +1,8 @@
 import streamlit as st
 from clip_tagger import get_clip_tags
 from tag_to_music import map_clip_tag_to_lastfm
+from lastfm_client import get_top_tracks_for_tag
+
 
 st.title("Moodboard → Music")
 st.write("Upload an image and we’ll tell you the vibe.")
@@ -26,6 +28,16 @@ if uploaded_file:
         genres = map_clip_tag_to_lastfm(tag)
         if genres:
             st.write(f"Matching genres: {', '.join(genres)}")
+
+            for genre in genres:
+                st.markdown(f"*Top tracks for **{genre}***:")
+                tracks = get_top_tracks_for_tag(genre)
+                if tracks:
+                    for name, artist in tracks:
+                        st.write(f"- {name} by {artist}")
+                else:
+                    st.write("No tracks found.")
         else:
             st.write("No genre mapping found.")
+
 
