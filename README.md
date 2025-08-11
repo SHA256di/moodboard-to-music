@@ -9,7 +9,7 @@ To explore the connection between an image and sound. This project bridges platf
 ## Features
 
 - Accepts image uploads from local files  
-- Uses CLIP (or Google Vision) to extract aesthetic tags from visuals  
+- Uses CLIP to extract aesthetic tags from visuals  
 - Maps tags to genres and moods using GPT-4 + Last.fm’s genre taxonomy  
 - Queries Spotify to generate and preview a matching playlist  
 
@@ -28,7 +28,7 @@ Currently in development. The MVP accepts image uploads, extracts aesthetic tags
 
 ## About Me
 
-Hi, I'm Shawdi — a creative technologist with a background in software engineering, digital media, and community organizing. I enjoy building emotionally resonant tools and products that live between media, accessibility, and technology. This project is part of my exploration into product management and cross-platform creativity.
+Hi, I'm Shawdi — a creative technologist with a background in computer science, linguistics, and digital media. I enjoy building emotionally resonant tools and products that live between media, accessibility, and technology. This project is part of my exploration into AI, product management, and cross-platform creativity.
 
 ## Privacy Policy
 
