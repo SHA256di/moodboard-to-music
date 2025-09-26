@@ -1,8 +1,7 @@
 import streamlit as st
-from clip_tagger import get_clip_tags
-from tag_to_music import map_clip_tag_to_lastfm
+from gemini_analyzer import analyze_image_with_gemini, get_enhanced_genre_mapping
 from lastfm_client import get_top_tracks_for_tag
-from spotify_client import get_genre_tracks_for_playlist, create_playlist_from_genres
+from spotify_client import create_playlist_from_genres
 import re
 
 # Page config
@@ -119,38 +118,98 @@ if uploaded_file:
     with col2:
         st.image("temp.jpg", caption="Your moodboard", width=300)
 
-    candidate_tags = [
-        "sunset", "vintage", "moody", "bright", "cozy", "grunge",
-        "romantic", "dark", "dreamy", "aesthetic", "quiet", "gloomy"
-    ]
-
-    # Analyze image
-    with st.spinner("🔮 Analyzing your image's aesthetic..."):
-        tag_scores = get_clip_tags("temp.jpg", candidate_tags)
-
-    # Results
-    st.markdown("### Detected Vibes")
+    # Analyze image with Gemini
+    with st.spinner("🔮 Analyzing your image's aesthetic with AI..."):
+        analysis_result = analyze_image_with_gemini("temp.jpg")
     
-    # Display top tags as chips
-    tags_html = ""
-    for tag, score in tag_scores[:5]:
-        percentage = round(score * 100, 1)
-        tags_html += f'<span class="tag-chip">{tag.title()} {percentage}%</span>'
-    
-    st.markdown(tags_html, unsafe_allow_html=True)
+    if analysis_result['success']:
+        analysis = analysis_result['analysis']
+        
+        # Display aesthetic tags
+        st.markdown("### Detected Vibes")
+        tags_html = ""
+        for tag in analysis['aesthetic_tags'][:5]:
+            tags_html += f'<span class="tag-chip">{tag.title()}</span>'
+        st.markdown(tags_html, unsafe_allow_html=True)
+        
+        # Display mood descriptors
+        st.markdown("### Mood")
+        mood_html = ""
+        for mood in analysis['mood_descriptors']:
+            mood_html += f'<span class="tag-chip">{mood.title()}</span>'
+        st.markdown(mood_html, unsafe_allow_html=True)
+        
+        # Show additional context in expandable section
+        with st.expander("📋 Detailed Analysis"):
+            st.write(f"**Time Period:** {analysis.get('time_period', 'Contemporary')}")
+            st.write(f"**Cultural Context:** {analysis.get('cultural_context', 'Modern aesthetic')}")
+            st.write(f"**Confidence:** {analysis.get('confidence', 0.8):.1%}")
+            
+            st.write("**Suggested Genres:**")
+            for genre in analysis.get('music_genres', []):
+                st.write(f"• {genre}")
+        
+        # Store analysis for playlist generation
+        gemini_analysis = analysis
+    else:
+        # Fallback to basic analysis
+        st.warning("⚠️ Gemini API not available. Using fallback analysis...")
+        from gemini_analyzer import get_basic_fallback_analysis
+        fallback_result = get_basic_fallback_analysis()
+        analysis = fallback_result['analysis']
+        
+        # Display aesthetic tags
+        st.markdown("### Detected Vibes")
+        tags_html = ""
+        for tag in analysis['aesthetic_tags'][:5]:
+            tags_html += f'<span class="tag-chip">{tag.title()}</span>'
+        st.markdown(tags_html, unsafe_allow_html=True)
+        
+        # Display mood descriptors
+        st.markdown("### Mood")
+        mood_html = ""
+        for mood in analysis['mood_descriptors']:
+            mood_html += f'<span class="tag-chip">{mood.title()}</span>'
+        st.markdown(mood_html, unsafe_allow_html=True)
+        
+        # Show additional context
+        with st.expander("📋 Analysis Details"):
+            st.write(f"**Time Period:** {analysis.get('time_period', 'Contemporary')}")
+            st.write(f"**Cultural Context:** {analysis.get('cultural_context', 'Modern aesthetic')}")
+            st.write("**Note:** Using fallback analysis. Enable Gemini API for better results.")
+            
+            st.write("**Suggested Genres:**")
+            for genre in analysis.get('music_genres', []):
+                st.write(f"• {genre}")
+        
+        # Store analysis for playlist generation
+        gemini_analysis = analysis
 
     # Generate playlist button
     st.markdown("### Create Your Playlist")
     
-    if st.button("Generate Spotify Playlist"):
+    if st.button("Generate Spotify Playlist") and gemini_analysis:
         with st.spinner("🎵 Crafting your perfect playlist..."):
             try:
-                # Get tracks for playlist
-                genre_tracks = get_genre_tracks_for_playlist(tag_scores)
+                # Get enhanced genre mapping from Gemini
+                enhanced_genres = get_enhanced_genre_mapping(
+                    gemini_analysis['aesthetic_tags'],
+                    gemini_analysis['mood_descriptors'], 
+                    gemini_analysis['music_genres'],
+                    gemini_analysis.get('time_period', 'Contemporary'),
+                    gemini_analysis.get('cultural_context', 'Modern')
+                )
+                
+                # Get tracks for each enhanced genre
+                genre_tracks = {}
+                for genre in enhanced_genres[:4]:  # Limit to 4 genres
+                    tracks = get_top_tracks_for_tag(genre, limit=8)
+                    if tracks:
+                        genre_tracks[genre] = tracks
                 
                 if genre_tracks:
                     # Create the playlist
-                    result = create_playlist_from_genres(genre_tracks, tag_scores)
+                    result = create_playlist_from_genres(genre_tracks, gemini_analysis)
                     
                     if result['success']:
                         # Extract playlist ID for embed

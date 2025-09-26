@@ -32,16 +32,23 @@ def search_track(sp, track_name, artist_name):
         return results['tracks']['items'][0]['uri']
     return None
 
-def create_playlist_from_genres(genre_tracks, image_tags):
+def create_playlist_from_genres(genre_tracks, gemini_analysis):
     """Create a Spotify playlist from genre tracks"""
     try:
         sp = get_spotify_client()
         user_id = sp.current_user()['id']
         
-        # Create playlist name based on top aesthetic tags
-        top_tags = [tag for tag, _ in image_tags[:3]]  # Top 3 tags
-        playlist_name = f"Moodboard Mix: {' + '.join(top_tags).title()}"
-        playlist_description = f"Generated from image aesthetics: {', '.join([tag for tag, _ in image_tags[:5]])}"
+        # Create playlist name based on Gemini analysis
+        if isinstance(gemini_analysis, dict):
+            # New Gemini format
+            top_tags = gemini_analysis.get('aesthetic_tags', [])[:3]
+            playlist_name = f"Moodboard Mix: {' + '.join(top_tags).title()}"
+            playlist_description = f"AI-generated playlist from image analysis: {', '.join(top_tags[:5])}"
+        else:
+            # Fallback for old CLIP format
+            top_tags = [tag for tag, _ in gemini_analysis[:3]]
+            playlist_name = f"Moodboard Mix: {' + '.join(top_tags).title()}"
+            playlist_description = f"Generated from image aesthetics: {', '.join([tag for tag, _ in gemini_analysis[:5]])}"
         
         # Create the playlist
         playlist = sp.user_playlist_create(
@@ -83,20 +90,3 @@ def create_playlist_from_genres(genre_tracks, image_tags):
             'error': str(e)
         }
 
-def get_genre_tracks_for_playlist(tags):
-    """Get tracks for each genre from the top aesthetic tags"""
-    from tag_to_music import map_clip_tag_to_lastfm
-    from lastfm_client import get_top_tracks_for_tag
-    
-    genre_tracks = {}
-    
-    # Get tracks for top 3-4 aesthetic tags to keep playlist manageable
-    for tag, score in tags[:4]:
-        genres = map_clip_tag_to_lastfm(tag)
-        if genres:
-            for genre in genres[:2]:  # Limit to 2 genres per tag
-                tracks = get_top_tracks_for_tag(genre, limit=5)
-                if tracks:
-                    genre_tracks[genre] = tracks
-    
-    return genre_tracks

@@ -4,3 +4,6 @@ streamlit
 Pillow
 numpy
 python-dotenv
+google-generativeai
+requests
+spotipy
