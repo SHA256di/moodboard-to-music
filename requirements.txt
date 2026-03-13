@@ -1,9 +1,8 @@
-torch
-torchvision
 streamlit
 Pillow
-numpy
 python-dotenv
-google-generativeai
 requests
 spotipy
+fastapi
+uvicorn[standard]
+python-multipart
