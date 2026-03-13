@@ -32,6 +32,7 @@ class Song(BaseModel):
 class PlaylistRequest(BaseModel):
     songs: List[Song]
     analysis: dict  # the full analysis object returned by /api/analyze
+    image_b64: str | None = None  # base64-encoded JPEG for playlist cover art
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ async def playlist(request: PlaylistRequest):
     create a Spotify playlist, and return the embed URL.
     """
     songs = [song.model_dump() for song in request.songs]
-    result = create_playlist_from_songs(songs, request.analysis)
+    result = create_playlist_from_songs(songs, request.analysis, request.image_b64)
 
     if not result["success"]:
         raise HTTPException(status_code=500, detail=result["error"])

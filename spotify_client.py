@@ -1,6 +1,9 @@
 import os
+import io
+import base64
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
+from PIL import Image
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,7 +11,8 @@ load_dotenv()
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 REDIRECT_URI = "http://127.0.0.1:8888/callback/"
-SCOPE = "playlist-modify-public playlist-modify-private"
+# ugc-image-upload is required for setting custom playlist cover art
+SCOPE = "playlist-modify-public playlist-modify-private ugc-image-upload"
 
 
 def get_spotify_client():
@@ -56,7 +60,33 @@ def find_track(sp, title, artist):
     return None, None, None, "not_found"
 
 
-def create_playlist_from_songs(songs, analysis):
+def upload_playlist_cover(sp, playlist_id, image_b64: str):
+    """
+    Set a custom cover image on a Spotify playlist.
+    Resizes and recompresses the image to stay under Spotify's 256KB limit.
+    """
+    try:
+        image_bytes = base64.b64decode(image_b64)
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img.thumbnail((640, 640))
+
+        quality = 85
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=quality)
+
+        # Reduce quality until the file is under Spotify's 256KB limit
+        while buffer.tell() > 200_000 and quality > 20:
+            quality -= 10
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=quality)
+
+        compressed_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        sp.playlist_upload_cover_image(playlist_id, compressed_b64)
+    except Exception as e:
+        print(f"Playlist cover upload failed (non-fatal): {e}")
+
+
+def create_playlist_from_songs(songs, analysis, image_b64: str | None = None):
     """
     Build a Spotify playlist from a list of {title, artist} dicts.
     Uses 3-tier search to maximize how many songs get found.
@@ -104,6 +134,10 @@ def create_playlist_from_songs(songs, analysis):
         # Add tracks in batches of 100 (Spotify API limit)
         for i in range(0, len(track_uris), 100):
             sp.playlist_add_items(playlist["id"], track_uris[i:i + 100])
+
+        # Set the uploaded image as the playlist cover
+        if image_b64:
+            upload_playlist_cover(sp, playlist["id"], image_b64)
 
         return {
             "success": True,
