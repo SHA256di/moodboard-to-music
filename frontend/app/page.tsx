@@ -31,9 +31,8 @@ interface PlaylistResult {
 }
 
 // ── Dominant color extraction ──────────────────────────────────────────────────
-// Samples the image at small scale, finds the pixel with the highest color
-// saturation (skipping near-black and near-white), and returns it as a hex string.
-// This gives a vivid accent color that actually reflects the image's mood.
+// Draws the image on a small canvas, finds the pixel with the highest color
+// saturation (skipping near-black and near-white), returns it as a hex string.
 
 async function extractDominantColor(imageUrl: string): Promise<string> {
   return new Promise((resolve) => {
@@ -59,10 +58,7 @@ async function extractDominantColor(imageUrl: string): Promise<string> {
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
         const lightness = (max + min) / 2;
-
-        // Skip pixels that are too dark or too light to be useful accent colors
         if (lightness < 0.12 || lightness > 0.88) continue;
-
         const sat = max === min ? 0 : (max - min) / (1 - Math.abs(2 * lightness - 1));
         if (sat > bestSat) {
           bestSat = sat;
@@ -88,11 +84,14 @@ const ANALYZING_PHRASES = [
   'finding your songs...',
 ];
 
-// ── Main component ─────────────────────────────────────────────────────────────
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+// ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>('upload');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [playlist, setPlaylist] = useState<PlaylistResult | null>(null);
   const [dominantColor, setDominantColor] = useState('#1a1a1a');
@@ -100,11 +99,11 @@ export default function Home() {
   const [playlistLoading, setPlaylistLoading] = useState(false);
   const [playlistError, setPlaylistError] = useState<string | null>(null);
   const [phraseIndex, setPhraseIndex] = useState(0);
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [embedKey, setEmbedKey] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Cycle through analyzing phrases every 2 seconds
+  // Cycle analyzing phrases every 2 seconds
   useEffect(() => {
     if (appState !== 'analyzing') return;
     const id = setInterval(() => {
@@ -122,14 +121,14 @@ export default function Home() {
     setAppState('analyzing');
     setPhraseIndex(0);
 
-    // Run color extraction in parallel with the API call
+    // Extract dominant color in parallel with the API call
     extractDominantColor(url).then(setDominantColor);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('http://localhost:8000/api/analyze', {
+      const res = await fetch(`${API_BASE}/api/analyze`, {
         method: 'POST',
         body: formData,
       });
@@ -162,7 +161,7 @@ export default function Home() {
     setPlaylistError(null);
 
     try {
-      // Convert the uploaded image to base64 so the backend can set it as the playlist cover
+      // Convert image to base64 so the backend can set it as the playlist cover
       let image_b64: string | null = null;
       if (imageFile) {
         const buffer = await imageFile.arrayBuffer();
@@ -172,7 +171,7 @@ export default function Home() {
         image_b64 = btoa(binary);
       }
 
-      const res = await fetch('http://localhost:8000/api/playlist', {
+      const res = await fetch(`${API_BASE}/api/playlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ songs: analysis.songs, analysis, image_b64 }),
@@ -182,6 +181,7 @@ export default function Home() {
 
       const data: PlaylistResult = await res.json();
       setPlaylist(data);
+      setEmbedKey((k) => k + 1);
     } catch {
       setPlaylistError('Could not create playlist. Make sure Spotify is authorized.');
     } finally {
@@ -261,7 +261,7 @@ export default function Home() {
             transition={{ duration: 0.5 }}
             className="min-h-screen relative flex items-center justify-center"
           >
-            {/* Full-screen blurred image background */}
+            {/* Full-screen blurred image */}
             <div
               className="absolute inset-0 scale-110"
               style={{
@@ -273,7 +273,7 @@ export default function Home() {
             />
             <div className="absolute inset-0 bg-black/55" />
 
-            {/* Cycling phrase */}
+            {/* Cycling phrase — each fades in and out */}
             <div className="relative z-10 text-center">
               <AnimatePresence mode="wait">
                 <motion.p
@@ -282,7 +282,7 @@ export default function Home() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.45 }}
-                  className="text-base font-light tracking-[0.3em] text-white/60"
+                  className="text-base font-light tracking-[0.3em] text-white/65"
                 >
                   {ANALYZING_PHRASES[phraseIndex]}
                 </motion.p>
@@ -305,7 +305,7 @@ export default function Home() {
           >
             <div className="relative z-10 max-w-xl mx-auto px-6 py-14">
 
-              {/* Back button */}
+              {/* Back */}
               <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -393,7 +393,7 @@ export default function Home() {
                 </div>
               </motion.div>
 
-              {/* Song cards — stagger in */}
+              {/* Song cards — stagger in with 0.08s between each */}
               <motion.div
                 variants={{
                   hidden: {},
@@ -418,20 +418,18 @@ export default function Home() {
                     }}
                     className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.07] transition-colors"
                   >
-                    <span className="text-white/18 text-xs w-5 text-right shrink-0 tabular-nums">
+                    <span className="text-white/20 text-xs w-5 text-right shrink-0 tabular-nums">
                       {i + 1}
                     </span>
                     <div className="min-w-0">
-                      <p className="text-white/80 text-sm font-medium truncate">
-                        {song.title}
-                      </p>
+                      <p className="text-white/80 text-sm font-medium truncate">{song.title}</p>
                       <p className="text-white/30 text-xs truncate">{song.artist}</p>
                     </div>
                   </motion.div>
                 ))}
               </motion.div>
 
-              {/* Generate playlist */}
+              {/* Generate playlist button */}
               {!playlist && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -464,60 +462,58 @@ export default function Home() {
                   </button>
 
                   {playlistError && (
-                    <p className="text-red-400/60 text-xs text-center mt-3">
-                      {playlistError}
-                    </p>
+                    <p className="text-red-400/60 text-xs text-center mt-3">{playlistError}</p>
                   )}
                 </motion.div>
               )}
 
-              {/* Playlist success */}
+              {/* Playlist result */}
               {playlist && (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6 }}
-                  className="rounded-2xl border border-white/10 overflow-hidden"
-                  style={{ background: `${dominantColor}14` }}
                 >
-                  {/* Cover + info */}
-                  <div className="flex items-center gap-4 p-5">
-                    {imageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={imageUrl}
-                        alt="playlist cover"
-                        className="w-16 h-16 object-cover rounded-lg shrink-0"
-                        style={{ boxShadow: `0 4px 20px ${dominantColor}60` }}
-                      />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-white/80 text-sm font-medium truncate">{playlist.playlist_name}</p>
-                      <p className="text-white/30 text-xs mt-0.5">{playlist.track_count} tracks</p>
+                  {/* Links row */}
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-white/25 text-xs tracking-widest uppercase">
+                      {playlist.track_count} tracks
+                    </p>
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => setEmbedKey((k) => k + 1)}
+                        className="text-white/25 text-xs tracking-widest uppercase hover:text-white/50 transition-colors"
+                      >
+                        ↺ reload
+                      </button>
+                      <a
+                        href={`spotify:playlist:${playlist.playlist_url.split('/').pop()}`}
+                        className="text-xs tracking-widest uppercase hover:opacity-70 transition-opacity"
+                        style={{ color: dominantColor }}
+                      >
+                        open in spotify →
+                      </a>
                     </div>
                   </div>
 
-                  {/* Open in Spotify button — uses app URI, falls back to web */}
-                  <div className="px-5 pb-5 flex flex-col gap-2">
-                    <a
-                      href={`spotify:playlist:${playlist.playlist_url.split('/').pop()}`}
-                      className="w-full py-3.5 rounded-xl text-sm font-semibold tracking-wide text-center transition-opacity hover:opacity-85 block"
-                      style={{ background: '#1DB954', color: '#000' }}
-                    >
-                      Open in Spotify
-                    </a>
-                    <a
-                      href={playlist.playlist_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-white/25 text-xs text-center hover:text-white/45 transition-colors"
-                    >
-                      open in browser instead →
-                    </a>
-                  </div>
+                  {/* Spotify embed */}
+                  <iframe
+                    key={embedKey}
+                    src={playlist.embed_url}
+                    width="100%"
+                    height="352"
+                    frameBorder="0"
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    loading="lazy"
+                    className="rounded-2xl"
+                  />
+
+                  <p className="text-white/15 text-xs text-center mt-2">
+                    if the embed shows &quot;not found&quot;, wait 30s and hit reload ↑
+                  </p>
 
                   {playlist.tracks_not_found.length > 0 && (
-                    <p className="text-white/20 text-xs text-center px-5 pb-4">
+                    <p className="text-white/20 text-xs text-center mt-2">
                       {playlist.tracks_not_found.length} songs couldn&apos;t be found on Spotify
                     </p>
                   )}

@@ -1,8 +1,9 @@
 import os
 import io
+import time
 import base64
+import requests
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
 from PIL import Image
 from dotenv import load_dotenv
 
@@ -10,20 +11,57 @@ load_dotenv()
 
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
-REDIRECT_URI = "http://127.0.0.1:8888/callback/"
-# ugc-image-upload is required for setting custom playlist cover art
-SCOPE = "playlist-modify-public playlist-modify-private ugc-image-upload"
+SPOTIFY_REFRESH_TOKEN = os.getenv("SPOTIFY_REFRESH_TOKEN")
+SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
+
+# Simple in-memory token cache so we don't refresh on every request
+_ACCESS_TOKEN: str | None = None
+_ACCESS_TOKEN_EXPIRES_AT: float = 0.0
 
 
-def get_spotify_client():
-    auth_manager = SpotifyOAuth(
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
-        redirect_uri=REDIRECT_URI,
-        scope=SCOPE,
-        cache_path=".spotify_cache"
+def get_access_token() -> str:
+    """
+    Get a valid Spotify access token using the long-lived refresh token.
+    Caches the token in memory until it's close to expiring.
+    """
+    global _ACCESS_TOKEN, _ACCESS_TOKEN_EXPIRES_AT
+
+    if not CLIENT_ID or not CLIENT_SECRET or not SPOTIFY_REFRESH_TOKEN:
+        raise RuntimeError("Spotify credentials or refresh token are not set in the environment.")
+
+    now = time.time()
+    # Reuse token if it is still valid for at least another 60 seconds
+    if _ACCESS_TOKEN and now < _ACCESS_TOKEN_EXPIRES_AT - 60:
+        return _ACCESS_TOKEN
+
+    resp = requests.post(
+        SPOTIFY_TOKEN_URL,
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": SPOTIFY_REFRESH_TOKEN,
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+        },
+        timeout=10,
     )
-    return spotipy.Spotify(auth_manager=auth_manager)
+    resp.raise_for_status()
+    data = resp.json()
+
+    _ACCESS_TOKEN = data["access_token"]
+    # Spotify tokens are typically valid for 3600s; be conservative
+    expires_in = data.get("expires_in", 3600)
+    _ACCESS_TOKEN_EXPIRES_AT = now + expires_in
+
+    return _ACCESS_TOKEN
+
+
+def get_spotify_client() -> spotipy.Spotify:
+    """
+    Return a Spotipy client authenticated with the current access token.
+    This does not perform any interactive OAuth flow, so it works on Railway.
+    """
+    token = get_access_token()
+    return spotipy.Spotify(auth=token)
 
 
 def find_track(sp, title, artist):

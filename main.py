@@ -11,11 +11,14 @@ from spotify_client import create_playlist_from_songs
 
 app = FastAPI(title="Moodboard → Music API", version="1.0.0")
 
-# Allow any frontend origin to call this API.
-# Tighten allow_origins to your frontend domain when you deploy.
+# Allow frontend origins. In production, this should include your custom domain.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://moodboard-to-music.shawgaze.com",
+        "https://shawgaze.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
