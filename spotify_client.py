@@ -17,32 +17,71 @@ SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 _ACCESS_TOKEN: str | None = None
 _ACCESS_TOKEN_EXPIRES_AT: float = 0.0
 
+
 def get_access_token() -> str:
     global _ACCESS_TOKEN, _ACCESS_TOKEN_EXPIRES_AT
 
-    if not CLIENT_ID or not CLIENT_SECRET or not SPOTIFY_REFRESH_TOKEN:
-        raise RuntimeError("Spotify credentials missing in environment.")
+    # 1. Clean the keys (kill quotes and spaces)
+    cid = CLIENT_ID.strip().replace('"', '').replace("'", "")
+    secret = CLIENT_SECRET.strip().replace('"', '').replace("'", "")
+    refresh = SPOTIFY_REFRESH_TOKEN.strip().replace('"', '').replace("'", "")
 
     now = time.time()
     if _ACCESS_TOKEN and now < _ACCESS_TOKEN_EXPIRES_AT - 60:
         return _ACCESS_TOKEN
 
+    # 2. Encode Credentials into a Header (Safe for special characters)
+    auth_str = f"{cid}:{secret}"
+    auth_b64 = base64.b64encode(auth_str.encode()).decode()
+
+    # 3. Request Token (Credentials in Header, Refresh Token in Body)
     resp = requests.post(
         SPOTIFY_TOKEN_URL,
-        data={
-            "grant_type": "refresh_token",
-            "refresh_token": SPOTIFY_REFRESH_TOKEN,
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-        },
+        data={"grant_type": "refresh_token", "refresh_token": refresh},
+        headers={"Authorization": f"Basic {auth_b64}"},
         timeout=10,
     )
-    resp.raise_for_status()
-    data = resp.json()
 
+    if resp.status_code != 200:
+        print(f"SPOTIFY AUTH FAIL: {resp.status_code} - {resp.text}")
+        resp.raise_for_status()
+
+    data = resp.json()
     _ACCESS_TOKEN = data["access_token"]
     _ACCESS_TOKEN_EXPIRES_AT = now + data.get("expires_in", 3600)
     return _ACCESS_TOKEN
+# Old version
+# def get_access_token() -> str:
+#     global _ACCESS_TOKEN, _ACCESS_TOKEN_EXPIRES_AT
+
+#     if not CLIENT_ID or not CLIENT_SECRET or not SPOTIFY_REFRESH_TOKEN:
+#         raise RuntimeError("Spotify credentials missing in environment.")
+
+#     now = time.time()
+#     if _ACCESS_TOKEN and now < _ACCESS_TOKEN_EXPIRES_AT - 60:
+#         return _ACCESS_TOKEN
+
+#     resp = requests.post(
+#         SPOTIFY_TOKEN_URL,
+#         params={
+#             "grant_type": "refresh_token",
+#             "refresh_token": SPOTIFY_REFRESH_TOKEN,
+#             "client_id": CLIENT_ID,
+#             "client_secret": CLIENT_SECRET,
+#         },
+#         timeout=10,
+#     )
+#     # Catch the log error details first
+#     if resp.status_code != 200:
+#         print(f"SPOTIFY AUTH ERROR: {resp.status_code} - {resp.text}")
+#     #raidr the exception to stop the process
+#     resp.raise_for_status()
+#     # if we made it here, it was a 200 ok
+#     data = resp.json()
+
+#     _ACCESS_TOKEN = data["access_token"]
+#     _ACCESS_TOKEN_EXPIRES_AT = now + data.get("expires_in", 3600)
+#     return _ACCESS_TOKEN
 
 def get_spotify_client() -> spotipy.Spotify:
     return spotipy.Spotify(auth=get_access_token())
@@ -119,7 +158,7 @@ def create_playlist_from_songs(songs, analysis, image_b64: str | None = None):
         tracks_added = []
         
         for song in songs:
-            uri, f_title, f_artist, method = find_track(sp, song.get("title"), song.get("artist"))
+            uri, f_title, f_artist, method = find_track(sp, song.title, song.artist)
             if uri and uri not in track_uris:
                 track_uris.append(uri)
                 tracks_added.append(f"{f_title} by {f_artist}")
@@ -134,6 +173,15 @@ def create_playlist_from_songs(songs, analysis, image_b64: str | None = None):
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                     timeout=15,
                 ).raise_for_status()
+        # 1. Get the ID first
+        playlist_id = playlist['id']
+            
+        # 2. Create the embed_url variable (DON'T SKIP THIS LINE)
+        embed_url = f"https://open.spotify.com/embed/playlist/{playlist_id}?utm_source=generator"
+
+        # 3. Calculate missed songs
+        found_titles = [t.split(" by ")[0] for t in tracks_added]
+        tracks_not_found = [s.title for s in songs if s.title not in found_titles]
 
         if image_b64:
             upload_playlist_cover(sp, playlist["id"], image_b64)
@@ -142,8 +190,10 @@ def create_playlist_from_songs(songs, analysis, image_b64: str | None = None):
             "success": True,
             "playlist_url": playlist["external_urls"]["spotify"],
             "playlist_name": name,
+            "embed_url": embed_url,
             "track_count": len(track_uris),
-            "tracks_added": tracks_added
+            "tracks_added": tracks_added,
+            "tracks_not_found": tracks_not_found
         }
     except Exception as e:
         return {"success": False, "error": str(e)}

@@ -68,29 +68,57 @@ async def analyze(file: UploadFile = File(...)):
         os.unlink(tmp_path)  # always clean up the temp file
 
 
+# @app.post("/api/playlist")
+# async def playlist(request: PlaylistRequest):
+#     """
+#     Accept the song list and analysis object from /api/analyze,
+#     create a Spotify playlist, and return the embed URL.
+#     """
+#     songs = [song.model_dump() for song in request.songs]
+#     result = create_playlist_from_songs(songs, request.analysis, request.image_b64)
+
+#     if not result["success"]:
+#         raise HTTPException(status_code=500, detail=result["error"])
+
+#     playlist_id = result["playlist_url"].split("/")[-1].split("?")[0]
+
+#     return {
+#         "playlist_url": result["playlist_url"],
+#         "playlist_name": result["playlist_name"],
+#         "embed_url": f"https://open.spotify.com/embed/playlist/{playlist_id}?utm_source=generator&theme=0",
+#         "track_count": result["track_count"],
+#         "tracks_added": result["tracks_added"],
+#         "tracks_not_found": result.get("tracks_not_found", []),
+#     }
+
 @app.post("/api/playlist")
-async def playlist(request: PlaylistRequest):
-    """
-    Accept the song list and analysis object from /api/analyze,
-    create a Spotify playlist, and return the embed URL.
-    """
-    songs = [song.model_dump() for song in request.songs]
-    result = create_playlist_from_songs(songs, request.analysis, request.image_b64)
+async def create_playlist(request: PlaylistRequest):
+    print(f"--- LOG START: Creating playlist for {len(request.songs)} songs ---")
+    try:
+        # Check if we even have the keys needed
+        if not os.getenv("SPOTIFY_REFRESH_TOKEN"):
+            print("ERROR: SPOTIFY_REFRESH_TOKEN is missing from Environment Variables!")
+            raise HTTPException(status_code=500, detail="Missing Spotify Credentials")
 
-    if not result["success"]:
-        raise HTTPException(status_code=500, detail=result["error"])
+        # Attempt the creation
+        result = create_playlist_from_songs(
+            request.songs, 
+            request.analysis, 
+            request.image_b64
+        )
+        
+        if not result.get("success"):
+            print(f"ERROR: Playlist creation failed: {result.get('error')}")
+            raise HTTPException(status_code=500, detail=result.get("error"))
+            
+        return result
 
-    playlist_id = result["playlist_url"].split("/")[-1].split("?")[0]
-
-    return {
-        "playlist_url": result["playlist_url"],
-        "playlist_name": result["playlist_name"],
-        "embed_url": f"https://open.spotify.com/embed/playlist/{playlist_id}?utm_source=generator&theme=0",
-        "track_count": result["track_count"],
-        "tracks_added": result["tracks_added"],
-        "tracks_not_found": result.get("tracks_not_found", []),
-    }
-
+    except Exception as e:
+        # This catch-all will print the EXACT line and error to Cloud Run Logs
+        import traceback
+        print("!!! CRITICAL PATH CRASH !!!")
+        print(traceback.format_exc()) 
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ── Health check ──────────────────────────────────────────────────────────────
 

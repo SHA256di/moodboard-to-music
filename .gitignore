@@ -5,3 +5,4 @@ __pycache__/
 temp*.jpg
 .env
 .cache
+.spotify_cache
