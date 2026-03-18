@@ -1,8 +1,8 @@
-streamlit
-Pillow
-python-dotenv
-requests
-spotipy
 fastapi
 uvicorn[standard]
 python-multipart
+python-dotenv
+requests
+spotipy
+Pillow
+google-generativeai

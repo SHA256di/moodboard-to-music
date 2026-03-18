@@ -17,7 +17,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://moodboard-to-music.shawgaze.com",
-        "https://shawgaze.com"
+        "https://shawgaze.com",
+        "https://m2m-frontend-1033929125399.us-central1.run.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
