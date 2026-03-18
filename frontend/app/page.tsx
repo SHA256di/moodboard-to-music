@@ -84,7 +84,7 @@ const ANALYZING_PHRASES = [
   'finding your songs...',
 ];
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL;
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 
@@ -141,7 +141,7 @@ export default function Home() {
     } catch (err) {
       console.error(err);
       setAppState('upload');
-      alert('Could not analyze the image. Make sure the backend is running on localhost:8000.');
+      alert(`Could not analyze the image. Attempted to connect to: ${API_BASE || 'Undefined API URL'}`);
     }
   }, []);
 
